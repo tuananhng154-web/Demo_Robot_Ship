@@ -1,0 +1,16 @@
+# Visual Studio cache (thường bị lock khi VS đang mở)
+.vs/
+
+# Build output
+bin/
+obj/
+
+# User settings
+*.user
+*.suo
+*.cache
+*.rsuser
+
+# Không cần thiết
+.DS_Store
+Thumbs.db
