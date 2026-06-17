@@ -52,7 +52,7 @@ Hệ thống mô phỏng đội robot tự hành giao hàng trên khuôn viên t
 | `DevExpress.Printing.v24.2.Core` | Printing core (dependency) |
 | `DevExpress.Sparkline.v24.2.Core` | Sparkline core (dependency) |
 
-> **Lưu ý:** DevExpress là thư viện thương mại. Có thể dùng bản **Trial 30 ngày miễn phí** tại https://www.devexpress.com/products/try/ — đủ dùng cho mục đích demo và báo cáo.
+> **Lưu ý:** DevExpress là thư viện thương mại. Có thể dùng bản **Trial 30 ngày miễn phí** tại https://www.devexpress.com/products/try/ 
 
 ---
 
