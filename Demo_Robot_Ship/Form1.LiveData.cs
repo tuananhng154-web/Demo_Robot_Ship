@@ -15,6 +15,7 @@ namespace Demo_Robot_Ship
         {
             RefreshRobotCards();
             RefreshOrderGrids();
+            UpdateCurrentComparisonRow(GetCurrentRunStatus());
         }
 
         private void RefreshRobotCards()
@@ -121,7 +122,7 @@ namespace Demo_Robot_Ship
             RefreshScoreTables();
             if (lblScoreSummary != null)
             {
-                lblScoreSummary.Text = "Đã xóa bảng kiểm thử Score. Chờ tick điều phối tiếp theo.";
+                lblScoreSummary.Text = "Đã xóa. Chờ lần điều phối tiếp theo.";
             }
         }
 
@@ -137,13 +138,14 @@ namespace Demo_Robot_Ship
             if (lblScoreSummary != null)
             {
                 lblScoreSummary.Text = string.Format(
-                    "Tick {0} | Đơn WAITING: {1} | OldestWait: {2}/{3} | Còn chờ: {4} | Hết giờ: {5} | Robot ứng viên: {6}",
+                    "{0} | Tick {1} | Waiting {2} | Wait {3}/{4} | Còn {5} | {6} | Robot {7}",
+                    GetStrategyName(currentDispatchStrategy),
                     simulationTick,
                     waitingCount,
                     oldestWait,
                     MaxBatchWaitTicks,
                     remainingWait,
-                    isTimedOut ? "Có" : "Không",
+                    isTimedOut ? "Hết giờ" : "Đang chờ",
                     robotCandidateCount);
             }
 
@@ -190,6 +192,7 @@ namespace Demo_Robot_Ship
             {
                 CandidateKey = MakeCandidateKey(candidate),
                 Tick = simulationTick,
+                Strategy = GetStrategyName(currentDispatchStrategy),
                 Robot = candidate.Robot.Id,
                 Decision = decision,
                 Reason = reason,
@@ -215,38 +218,108 @@ namespace Demo_Robot_Ship
         private string MakeCandidateKey(AssignmentCandidate candidate)
         {
             string route = candidate.RoutePlan == null ? "N/A" : candidate.RoutePlan.RouteText;
-            return string.Format("{0}|{1}|{2}|{3}|{4:0.000}", candidate.Robot.Id, candidate.OrderText, route, candidate.AvailableDelay, candidate.Score);
+            return string.Format("{0}|{1}|{2}|{3}|{4}|{5:0.000}", GetStrategyName(currentDispatchStrategy), candidate.Robot.Id, candidate.OrderText, route, candidate.AvailableDelay, candidate.Score);
         }
 
         private void RefreshScoreTables()
         {
-            foreach (KeyValuePair<string, DataGridView> pair in scoreRobotGrids)
+            ScoreCandidateRow bestOverall = scoreAllRows.Count > 0
+                ? scoreAllRows.OrderByDescending(r => r.FinalScore).First()
+                : null;
+
+            foreach (string robotId in new string[] { "R1", "R3", "R2" })
             {
-                List<ScoreCandidateRow> rows = scoreRowsByRobot.ContainsKey(pair.Key)
-                    ? scoreRowsByRobot[pair.Key].OrderByDescending(r => r.FinalScore).ToList()
-                    : new List<ScoreCandidateRow>();
-                SetGridData(pair.Value, rows);
+                ScoreCandidateRow bestOfRobot = null;
+                if (scoreRowsByRobot.ContainsKey(robotId) && scoreRowsByRobot[robotId].Count > 0)
+                {
+                    bestOfRobot = scoreRowsByRobot[robotId].OrderByDescending(r => r.FinalScore).First();
+                }
+
+                bool isChosenRobot = bestOverall != null && bestOfRobot != null &&
+                                     string.Equals(bestOverall.CandidateKey, bestOfRobot.CandidateKey, StringComparison.Ordinal);
+                string decision = isChosenRobot
+                    ? (bestOverall.Decision == "CHỜ THÊM" ? "TẠM CHỜ" : "CHỌN")
+                    : (bestOfRobot == null ? "" : "Ứng viên");
+
+                if (scoreDetailGrids.ContainsKey(robotId))
+                {
+                    SetDetailGridData(scoreDetailGrids[robotId], BuildScoreDetailItems(bestOfRobot, decision, robotId));
+                }
+
+                if (scoreRobotBoxes.ContainsKey(robotId))
+                {
+                    scoreRobotBoxes[robotId].ForeColor = isChosenRobot
+                        ? ColorTranslator.FromHtml("#16A34A")
+                        : ColorTranslator.FromHtml("#111827");
+                }
             }
 
             if (dgvBestScore != null)
             {
-                List<ScoreCandidateRow> bestRows = new List<ScoreCandidateRow>();
-                foreach (string robotId in new string[] { "R1", "R3", "R2" })
-                {
-                    if (!scoreRowsByRobot.ContainsKey(robotId) || scoreRowsByRobot[robotId].Count == 0) continue;
-                    ScoreCandidateRow bestOfRobot = scoreRowsByRobot[robotId].OrderByDescending(r => r.FinalScore).First();
-                    bestRows.Add(CloneScoreRow(bestOfRobot, "BEST " + robotId));
-                }
-
-                if (scoreAllRows.Count > 0)
-                {
-                    ScoreCandidateRow bestOverall = scoreAllRows.OrderByDescending(r => r.FinalScore).First();
-                    string decision = bestOverall.Decision == "CHỜ THÊM" ? "TẠM CHỜ" : "CHỌN";
-                    bestRows.Add(CloneScoreRow(bestOverall, decision));
-                }
-
-                SetGridData(dgvBestScore, bestRows);
+                string decision = bestOverall == null
+                    ? ""
+                    : (bestOverall.Decision == "CHỜ THÊM" ? "TẠM CHỜ" : "CHỌN");
+                SetDetailGridData(dgvBestScore, BuildScoreDetailItems(bestOverall, decision, "BEST"));
             }
+
+            if (bestScoreBox != null)
+            {
+                bestScoreBox.ForeColor = bestOverall == null
+                    ? ColorTranslator.FromHtml("#111827")
+                    : ColorTranslator.FromHtml("#16A34A");
+            }
+        }
+
+        private List<ScoreDetailItem> BuildScoreDetailItems(ScoreCandidateRow row, string decision, string fallbackRobot)
+        {
+            List<ScoreDetailItem> items = new List<ScoreDetailItem>();
+
+            if (row == null)
+            {
+                items.Add(new ScoreDetailItem { Field = "Kết quả", Value = "Chưa có dữ liệu" });
+                items.Add(new ScoreDetailItem { Field = "Robot", Value = fallbackRobot });
+                items.Add(new ScoreDetailItem { Field = "Score", Value = "-" });
+                items.Add(new ScoreDetailItem { Field = "Đơn", Value = "-" });
+                items.Add(new ScoreDetailItem { Field = "Tuyến", Value = "-" });
+                items.Add(new ScoreDetailItem { Field = "Tải", Value = "-" });
+                items.Add(new ScoreDetailItem { Field = "Di chuyển", Value = "-" });
+                items.Add(new ScoreDetailItem { Field = "Pin", Value = "-" });
+                items.Add(new ScoreDetailItem { Field = "Score TP", Value = "-" });
+                return items;
+            }
+
+            string result = string.IsNullOrEmpty(decision) ? row.Decision : decision;
+            string scoreParts = string.Format(
+                "Load {0:0.00} | Dist {1:0.00} | Time {2:0.00}\nBat {3:0.00} | Health {4:0.00} | Wait {5:0.00} | Delay {6:0.00}",
+                row.LoadScore,
+                row.DistanceScore,
+                row.TimeScore,
+                row.BatteryScore,
+                row.HealthScore,
+                row.WaitScore,
+                row.DelayPenalty);
+
+            items.Add(new ScoreDetailItem { Field = "Kết quả", Value = result });
+            items.Add(new ScoreDetailItem { Field = "Robot", Value = row.Robot });
+            items.Add(new ScoreDetailItem { Field = "Score", Value = row.FinalScoreText });
+            items.Add(new ScoreDetailItem { Field = "Đơn", Value = row.Orders });
+            items.Add(new ScoreDetailItem { Field = "Tuyến", Value = row.Route });
+            items.Add(new ScoreDetailItem { Field = "Tải", Value = row.Load });
+            items.Add(new ScoreDetailItem { Field = "Di chuyển", Value = row.Steps });
+            items.Add(new ScoreDetailItem { Field = "Pin", Value = row.Battery });
+            items.Add(new ScoreDetailItem { Field = "SoH", Value = row.Health });
+            items.Add(new ScoreDetailItem { Field = "Delay", Value = row.Delay });
+            items.Add(new ScoreDetailItem { Field = "Score TP", Value = scoreParts });
+            items.Add(new ScoreDetailItem { Field = "Lý do", Value = row.Reason });
+            return items;
+        }
+
+        private void SetDetailGridData(DataGridView grid, List<ScoreDetailItem> rows)
+        {
+            if (grid == null) return;
+            grid.DataSource = null;
+            grid.DataSource = rows;
+            grid.ClearSelection();
         }
 
         private ScoreCandidateRow CloneScoreRow(ScoreCandidateRow source, string decision)
@@ -255,6 +328,7 @@ namespace Demo_Robot_Ship
             {
                 CandidateKey = source.CandidateKey,
                 Tick = source.Tick,
+                Strategy = source.Strategy,
                 Robot = source.Robot,
                 Decision = decision,
                 Reason = source.Reason,

@@ -66,6 +66,18 @@ namespace Demo_Robot_Ship
 
         private void DispatchOrders()
         {
+            if (currentDispatchStrategy == DispatchStrategy.Cvrp)
+            {
+                DispatchOrdersCvrp();
+            }
+            else
+            {
+                DispatchOrdersGreedy();
+            }
+        }
+
+        private void DispatchOrdersGreedy()
+        {
             if (pendingOrders.Count == 0) return;
 
             FailOrdersThatNoRobotCanCarry();
@@ -258,17 +270,42 @@ namespace Demo_Robot_Ship
                 return null;
             }
 
+            return BuildCandidateForOrderSet(availability, orders, oldestWait, "GREEDY");
+        }
+
+        private AssignmentCandidate BuildCandidateForOrderSet(RobotAvailability availability, List<DeliveryOrder> orders, int oldestWait, string source)
+        {
+            if (availability == null || availability.Robot == null) return null;
+            Robot robot = availability.Robot;
+            if (orders == null || orders.Count == 0)
+            {
+                WriteTestLog(string.Format("[REJECT] {0} | {1}: không có đơn hợp lệ.", robot.Id, source));
+                return null;
+            }
+
+            orders = orders
+                .Where(o => o != null && o.Status == "WAITING")
+                .OrderBy(o => o.CreatedTick)
+                .ThenBy(o => o.Id)
+                .ToList();
+
+            if (orders.Count == 0)
+            {
+                WriteTestLog(string.Format("[REJECT] {0} | {1}: các đơn không còn ở trạng thái WAITING.", robot.Id, source));
+                return null;
+            }
+
             double totalWeight = orders.Sum(o => o.WeightKg);
             if (totalWeight > robot.MaxPayloadKg)
             {
-                WriteTestLog(string.Format("[REJECT] {0} | Orders {1}: vượt tải {2:0.0}/{3:0.0}kg.", robot.Id, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room)), totalWeight, robot.MaxPayloadKg));
+                WriteTestLog(string.Format("[REJECT] {0} | {1} | Orders {2}: vượt tải {3:0.0}/{4:0.0}kg.", robot.Id, source, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room)), totalWeight, robot.MaxPayloadKg));
                 return null;
             }
 
             List<Node> stops = OptimizeStopOrder(availability.StartX, availability.StartY, orders);
             if (stops.Count == 0)
             {
-                WriteTestLog(string.Format("[REJECT] {0} | Orders {1}: không xác định được điểm giao.", robot.Id, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room))));
+                WriteTestLog(string.Format("[REJECT] {0} | {1} | Orders {2}: không xác định được điểm giao.", robot.Id, source, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room))));
                 return null;
             }
 
@@ -283,7 +320,7 @@ namespace Demo_Robot_Ship
 
             if (route == null)
             {
-                WriteTestLog(string.Format("[REJECT] {0} | Orders {1}: không tìm được tuyến an toàn bằng Time-Space A*.", robot.Id, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room))));
+                WriteTestLog(string.Format("[REJECT] {0} | {1} | Orders {2}: không tìm được tuyến an toàn bằng Time-Space A*.", robot.Id, source, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room))));
                 return null;
             }
 
@@ -294,7 +331,7 @@ namespace Demo_Robot_Ship
 
             if (batteryAfterMission < BatteryReservePercent)
             {
-                WriteTestLog(string.Format("[REJECT] {0} | Orders {1}: pin không đủ. Effective={2:0.0}%, Cost={3:0.0}%, After={4:0.0}%, Reserve={5:0.0}%.", robot.Id, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room)), effectiveBattery, energyCost, batteryAfterMission, BatteryReservePercent));
+                WriteTestLog(string.Format("[REJECT] {0} | {1} | Orders {2}: pin không đủ. Effective={3:0.0}%, Cost={4:0.0}%, After={5:0.0}%, Reserve={6:0.0}%.", robot.Id, source, string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room)), effectiveBattery, energyCost, batteryAfterMission, BatteryReservePercent));
                 return null;
             }
 
@@ -474,6 +511,7 @@ namespace Demo_Robot_Ship
             robot.CurrentRouteText = assignment.RouteText;
             robot.Status = "DELIVERING";
             robot.WaitTicks = 0;
+            RegisterAssignmentMetrics(assignment);
 
             string orderList = string.Join(", ", orders.Select(o => "#" + o.Id.ToString("000") + "-" + o.Room));
 
@@ -573,6 +611,7 @@ namespace Demo_Robot_Ship
         private void ReplanRobot(Robot robot)
         {
             robot.ReplanCount++;
+            RegisterReplanMetric();
 
             if (robot.Status == "DELIVERING" && robot.CurrentOrders != null && robot.CurrentOrders.Count > 0)
             {
@@ -607,6 +646,7 @@ namespace Demo_Robot_Ship
         private void ConsumeMoveBattery(Robot robot)
         {
             robot.TotalDistance++;
+            RegisterMoveMetric();
             double loadRatio = robot.MaxPayloadKg <= 0 ? 0 : robot.Payload / robot.MaxPayloadKg;
             double effectiveCost = BatteryModel.EstimateEnergyCost(1, 0, loadRatio, BatteryDrainBase, BaseWaitCost, LoadFactor);
             double displayedDrain = BatteryModel.ConvertEffectiveCostToDisplayedBatteryDrain(effectiveCost, robot.BatteryHealth);
@@ -620,6 +660,7 @@ namespace Demo_Robot_Ship
             double displayedDrain = BatteryModel.ConvertEffectiveCostToDisplayedBatteryDrain(effectiveCost, robot.BatteryHealth);
             ApplyBatteryDrain(robot, displayedDrain);
             robot.TotalWaitSteps++;
+            RegisterWaitMetric();
         }
 
         private double EstimateDisplayedDrainForPath(Robot robot, List<Node> path, double payloadKg)
@@ -636,6 +677,7 @@ namespace Demo_Robot_Ship
             robot.Battery -= displayedDrain;
             if (robot.Battery < 0) robot.Battery = 0;
             BatteryModel.RegisterBatteryUse(robot, displayedDrain, DegradationPerCycle);
+            RegisterBatteryMetric(displayedDrain);
 
             if (robot.Battery < LowBatteryThreshold && robot.Payload <= 0 && robot.Status == "IDLE")
             {
@@ -659,6 +701,7 @@ namespace Demo_Robot_Ship
                 order.Status = "DELIVERED";
                 order.DeliveredAt = DateTime.Now;
                 order.DeliveredTick = simulationTick;
+                RegisterDeliveredMetric(order.DeliveredTick);
                 robot.CurrentOrders.Remove(order);
                 robot.TotalDelivered++;
             }

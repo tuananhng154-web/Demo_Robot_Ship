@@ -28,8 +28,8 @@ namespace Demo_Robot_Ship
             tableLayoutPanel2.RowStyles.Add(new RowStyle(SizeType.Percent, 55F));
 
             tableLayoutPanel1.RowStyles.Clear();
-            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 230F));
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 220F));
+            tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Absolute, 310F));
             tableLayoutPanel1.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             // Input đơn hàng
@@ -57,9 +57,12 @@ namespace Demo_Robot_Ship
             trackBar1.ValueChanged -= trackBar1_ValueChanged;
             trackBar1.ValueChanged += trackBar1_ValueChanged;
             trackBar1_ValueChanged(trackBar1, EventArgs.Empty);
+            SetupDispatchStrategySelector();
 
             SetupLogBox();
             SetupTestLogTab();
+            SetupComparisonTab();
+            StartNewComparisonRun();
 
             SetupOrderGrid(dgvPending, false);
             SetupOrderGrid(dgvCompleted, true);
@@ -73,6 +76,73 @@ namespace Demo_Robot_Ship
             BuildRobotCards();
             ApplyModernTheme();
             WriteLog("Hệ thống sẵn sàng. Nhập phòng dạng A101/B203 hoặc click vào cổng giao hàng trên bản đồ.");
+        }
+
+        private void SetupDispatchStrategySelector()
+        {
+            btnStart.Top = 28;
+            btnPause.Top = 76;
+            btnReset.Top = 124;
+
+            Label lblStrategy = new Label();
+            lblStrategy.AutoSize = true;
+            lblStrategy.Left = 13;
+            lblStrategy.Top = 174;
+            lblStrategy.Text = "Cơ chế điều phối";
+            lblStrategy.ForeColor = ColorTranslator.FromHtml("#E5E7EB");
+            lblStrategy.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+
+            cboDispatchStrategy = new ComboBox();
+            cboDispatchStrategy.Left = 13;
+            cboDispatchStrategy.Top = 199;
+            cboDispatchStrategy.Width = 276;
+            cboDispatchStrategy.DropDownStyle = ComboBoxStyle.DropDownList;
+            cboDispatchStrategy.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            cboDispatchStrategy.Items.Clear();
+            cboDispatchStrategy.Items.Add("Greedy - hiện tại");
+            cboDispatchStrategy.Items.Add("CVRP - giới hạn tải");
+            cboDispatchStrategy.SelectedIndex = currentDispatchStrategy == DispatchStrategy.Cvrp ? 1 : 0;
+            cboDispatchStrategy.SelectedIndexChanged -= cboDispatchStrategy_SelectedIndexChanged;
+            cboDispatchStrategy.SelectedIndexChanged += cboDispatchStrategy_SelectedIndexChanged;
+
+            lblDispatchStrategyInfo = new Label();
+            lblDispatchStrategyInfo.Left = 13;
+            lblDispatchStrategyInfo.Top = 232;
+            lblDispatchStrategyInfo.Width = 276;
+            lblDispatchStrategyInfo.Height = 36;
+            lblDispatchStrategyInfo.ForeColor = ColorTranslator.FromHtml("#CBD5E1");
+            lblDispatchStrategyInfo.Font = new Font("Segoe UI", 7.8F, FontStyle.Regular);
+            lblDispatchStrategyInfo.Text = GetStrategyDescription(currentDispatchStrategy);
+
+            label3.Left = 13;
+            label3.Top = 274;
+            trackBar1.Left = 70;
+            trackBar1.Top = 263;
+            trackBar1.Width = 219;
+
+            groupBox2.Controls.Add(lblStrategy);
+            groupBox2.Controls.Add(cboDispatchStrategy);
+            groupBox2.Controls.Add(lblDispatchStrategyInfo);
+        }
+
+        private void cboDispatchStrategy_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            DispatchStrategy selected = cboDispatchStrategy != null && cboDispatchStrategy.SelectedIndex == 1
+                ? DispatchStrategy.Cvrp
+                : DispatchStrategy.Greedy;
+
+            if (selected == currentDispatchStrategy)
+            {
+                if (lblDispatchStrategyInfo != null) lblDispatchStrategyInfo.Text = GetStrategyDescription(currentDispatchStrategy);
+                return;
+            }
+
+            FinalizeCurrentComparisonRun("Đã chốt do đổi cơ chế");
+            currentDispatchStrategy = selected;
+            if (lblDispatchStrategyInfo != null) lblDispatchStrategyInfo.Text = GetStrategyDescription(currentDispatchStrategy);
+            StartNewComparisonRun();
+            WriteLog("Hệ thống: Đổi cơ chế điều phối sang " + GetStrategyName(currentDispatchStrategy) + ".");
+            RefreshComparisonGrid();
         }
 
         private void SetupLogBox()
@@ -102,16 +172,236 @@ namespace Demo_Robot_Ship
             scoreRowsByRobot.Clear();
             scoreAllRows.Clear();
             scoreRobotGrids.Clear();
+            scoreDetailGrids.Clear();
+            scoreRobotBoxes.Clear();
 
             TableLayoutPanel layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.ColumnCount = 1;
-            layout.RowCount = 5;
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+            layout.RowCount = 3;
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 60F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 40F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 90F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.BackColor = ColorTranslator.FromHtml("#F8FAFC");
+            layout.Padding = new Padding(8);
+
+            Panel header = new Panel();
+            header.Dock = DockStyle.Fill;
+            header.Padding = new Padding(12, 6, 12, 6);
+            header.BackColor = ColorTranslator.FromHtml("#111827");
+
+            Label title = new Label();
+            title.AutoSize = false;
+            title.Dock = DockStyle.Fill;
+            title.ForeColor = ColorTranslator.FromHtml("#F9FAFB");
+            title.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            title.Text = "KIỂM THỬ SCORE";
+            title.TextAlign = ContentAlignment.MiddleLeft;
+
+            Button btnClearTestLog = new Button();
+            btnClearTestLog.Dock = DockStyle.Right;
+            btnClearTestLog.Width = 100;
+            btnClearTestLog.Text = "Xóa";
+            btnClearTestLog.FlatStyle = FlatStyle.Flat;
+            btnClearTestLog.FlatAppearance.BorderSize = 0;
+            btnClearTestLog.BackColor = ColorTranslator.FromHtml("#374151");
+            btnClearTestLog.ForeColor = Color.White;
+            btnClearTestLog.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            btnClearTestLog.Click += delegate
+            {
+                ClearScoreTestData();
+                if (rtbTestLog != null) rtbTestLog.Clear();
+                WriteTestLog("[RESET] Score table cleared.");
+            };
+
+            header.Controls.Add(btnClearTestLog);
+            header.Controls.Add(title);
+
+            lblScoreSummary = new Label();
+            lblScoreSummary.Dock = DockStyle.Fill;
+            lblScoreSummary.Padding = new Padding(12, 0, 12, 0);
+            lblScoreSummary.TextAlign = ContentAlignment.MiddleLeft;
+            lblScoreSummary.BackColor = ColorTranslator.FromHtml("#EFF6FF");
+            lblScoreSummary.ForeColor = ColorTranslator.FromHtml("#1E3A8A");
+            lblScoreSummary.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            lblScoreSummary.Text = "Chưa có dữ liệu.";
+
+            TableLayoutPanel body = new TableLayoutPanel();
+            body.Dock = DockStyle.Fill;
+            body.ColumnCount = 2;
+            body.RowCount = 1;
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45F));
+            body.BackColor = ColorTranslator.FromHtml("#F8FAFC");
+            body.Padding = new Padding(0, 8, 0, 0);
+
+            GroupBox robotsBox = new GroupBox();
+            robotsBox.Text = "Robot ứng viên";
+            robotsBox.Dock = DockStyle.Fill;
+            robotsBox.Padding = new Padding(10, 24, 10, 10);
+            robotsBox.BackColor = ColorTranslator.FromHtml("#F8FAFC");
+            robotsBox.ForeColor = ColorTranslator.FromHtml("#111827");
+            robotsBox.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+
+            TableLayoutPanel robotLayout = new TableLayoutPanel();
+            robotLayout.Dock = DockStyle.Fill;
+            robotLayout.ColumnCount = 1;
+            robotLayout.RowCount = 3;
+            robotLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33F));
+            robotLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33.33F));
+            robotLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 33.34F));
+            robotLayout.BackColor = ColorTranslator.FromHtml("#F8FAFC");
+
+            dgvScoreR1 = CreateScoreDetailGrid();
+            dgvScoreR3 = CreateScoreDetailGrid();
+            dgvScoreR2 = CreateScoreDetailGrid();
+
+            scoreDetailGrids["R1"] = dgvScoreR1;
+            scoreDetailGrids["R3"] = dgvScoreR3;
+            scoreDetailGrids["R2"] = dgvScoreR2;
+            scoreRowsByRobot["R1"] = new List<ScoreCandidateRow>();
+            scoreRowsByRobot["R3"] = new List<ScoreCandidateRow>();
+            scoreRowsByRobot["R2"] = new List<ScoreCandidateRow>();
+
+            robotLayout.Controls.Add(CreateRobotScoreCard("R1", "R1 - Robot nhỏ", dgvScoreR1), 0, 0);
+            robotLayout.Controls.Add(CreateRobotScoreCard("R3", "R3 - Robot vừa", dgvScoreR3), 0, 1);
+            robotLayout.Controls.Add(CreateRobotScoreCard("R2", "R2 - Robot tải lớn", dgvScoreR2), 0, 2);
+            robotsBox.Controls.Add(robotLayout);
+
+            bestScoreBox = new GroupBox();
+            bestScoreBox.Text = "Phương án được chọn";
+            bestScoreBox.Dock = DockStyle.Fill;
+            bestScoreBox.Padding = new Padding(10, 24, 10, 10);
+            bestScoreBox.BackColor = ColorTranslator.FromHtml("#F8FAFC");
+            bestScoreBox.ForeColor = ColorTranslator.FromHtml("#111827");
+            bestScoreBox.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+
+            dgvBestScore = CreateScoreDetailGrid();
+            bestScoreBox.Controls.Add(dgvBestScore);
+
+            body.Controls.Add(robotsBox, 0, 0);
+            body.Controls.Add(bestScoreBox, 1, 0);
+
+            // Giữ log ẩn để không làm rối giao diện nhưng vẫn không ảnh hưởng các hàm ghi log hiện có.
+            rtbTestLog = new RichTextBox();
+            rtbTestLog.Visible = false;
+
+            layout.Controls.Add(header, 0, 0);
+            layout.Controls.Add(lblScoreSummary, 0, 1);
+            layout.Controls.Add(body, 0, 2);
+            tabPage4.Controls.Add(layout);
+
+            WriteTestLog("[SYSTEM] Score view ready.");
+        }
+
+        private GroupBox CreateRobotScoreCard(string robotId, string title, DataGridView grid)
+        {
+            GroupBox box = new GroupBox();
+            box.Text = title;
+            box.Dock = DockStyle.Fill;
+            box.Padding = new Padding(8, 22, 8, 8);
+            box.Margin = new Padding(0, 0, 0, 8);
+            box.BackColor = Color.White;
+            box.ForeColor = ColorTranslator.FromHtml("#111827");
+            box.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            grid.Dock = DockStyle.Fill;
+            box.Controls.Add(grid);
+            scoreRobotBoxes[robotId] = box;
+            return box;
+        }
+
+        private DataGridView CreateScoreDetailGrid()
+        {
+            DataGridView grid = new DataGridView();
+            grid.Dock = DockStyle.Fill;
+            grid.AutoGenerateColumns = false;
+            grid.AllowUserToAddRows = false;
+            grid.AllowUserToDeleteRows = false;
+            grid.AllowUserToResizeRows = false;
+            grid.ReadOnly = true;
+            grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            grid.MultiSelect = false;
+            grid.RowHeadersVisible = false;
+            grid.ColumnHeadersVisible = false;
+            grid.BackgroundColor = Color.White;
+            grid.BorderStyle = BorderStyle.FixedSingle;
+            grid.EnableHeadersVisualStyles = false;
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCells;
+            grid.ScrollBars = ScrollBars.Vertical;
+            grid.RowTemplate.Height = 28;
+            grid.Columns.Clear();
+
+            DataGridViewTextBoxColumn fieldCol = new DataGridViewTextBoxColumn();
+            fieldCol.DataPropertyName = "Field";
+            fieldCol.HeaderText = "Mục";
+            fieldCol.FillWeight = 34;
+            fieldCol.DefaultCellStyle.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            fieldCol.DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#475569");
+            grid.Columns.Add(fieldCol);
+
+            DataGridViewTextBoxColumn valueCol = new DataGridViewTextBoxColumn();
+            valueCol.DataPropertyName = "Value";
+            valueCol.HeaderText = "Giá trị";
+            valueCol.FillWeight = 66;
+            valueCol.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
+            grid.Columns.Add(valueCol);
+
+            grid.DefaultCellStyle.Font = new Font("Segoe UI", 8.5F);
+            grid.DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#111827");
+            grid.DefaultCellStyle.SelectionBackColor = ColorTranslator.FromHtml("#DBEAFE");
+            grid.DefaultCellStyle.SelectionForeColor = ColorTranslator.FromHtml("#111827");
+            grid.GridColor = ColorTranslator.FromHtml("#E5E7EB");
+            grid.AlternatingRowsDefaultCellStyle.BackColor = ColorTranslator.FromHtml("#F8FAFC");
+            grid.CellFormatting -= ScoreDetailGrid_CellFormatting;
+            grid.CellFormatting += ScoreDetailGrid_CellFormatting;
+            return grid;
+        }
+
+        private void ScoreDetailGrid_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            DataGridView grid = sender as DataGridView;
+            if (grid == null || e.RowIndex < 0 || e.ColumnIndex < 0) return;
+            ScoreDetailItem item = grid.Rows[e.RowIndex].DataBoundItem as ScoreDetailItem;
+            if (item == null) return;
+
+            if (item.Field == "Kết quả")
+            {
+                string value = item.Value == null ? "" : item.Value;
+                if (value.Contains("CHỌN"))
+                {
+                    grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = ColorTranslator.FromHtml("#DCFCE7");
+                    grid.Rows[e.RowIndex].DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#14532D");
+                    grid.Rows[e.RowIndex].DefaultCellStyle.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+                }
+                else if (value.Contains("CHỜ"))
+                {
+                    grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = ColorTranslator.FromHtml("#FEF3C7");
+                    grid.Rows[e.RowIndex].DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#92400E");
+                }
+            }
+            else if (item.Field == "Score")
+            {
+                grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = ColorTranslator.FromHtml("#EFF6FF");
+                grid.Rows[e.RowIndex].DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#1D4ED8");
+                grid.Rows[e.RowIndex].DefaultCellStyle.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            }
+        }
+
+        private void SetupComparisonTab()
+
+        {
+            tabComparison = new TabPage("So sánh cơ chế");
+            tabComparison.BackColor = ColorTranslator.FromHtml("#F8FAFC");
+            tabComparison.Padding = new Padding(8);
+
+            TableLayoutPanel layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.ColumnCount = 1;
+            layout.RowCount = 3;
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             layout.BackColor = ColorTranslator.FromHtml("#F8FAFC");
 
             Panel header = new Panel();
@@ -120,98 +410,110 @@ namespace Demo_Robot_Ship
             header.BackColor = ColorTranslator.FromHtml("#111827");
 
             Label title = new Label();
-            title.AutoSize = false;
             title.Dock = DockStyle.Fill;
-            title.ForeColor = ColorTranslator.FromHtml("#E5E7EB");
-            title.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            title.Text = "BẢNG KIỂM THỬ SCORE - tách riêng từng robot, xem điểm thành phần và phương án tốt nhất";
             title.TextAlign = ContentAlignment.MiddleLeft;
+            title.ForeColor = ColorTranslator.FromHtml("#E5E7EB");
+            title.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+            title.Text = "SO SÁNH GREEDY / CVRP - chạy cùng tập đơn, chốt kết quả rồi reset để chạy cơ chế còn lại";
 
-            Button btnClearTestLog = new Button();
-            btnClearTestLog.Dock = DockStyle.Right;
-            btnClearTestLog.Width = 118;
-            btnClearTestLog.Text = "Xóa bảng";
-            btnClearTestLog.FlatStyle = FlatStyle.Flat;
-            btnClearTestLog.FlatAppearance.BorderSize = 0;
-            btnClearTestLog.BackColor = ColorTranslator.FromHtml("#374151");
-            btnClearTestLog.ForeColor = Color.White;
-            btnClearTestLog.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
-            btnClearTestLog.Click += delegate
+            Button btnClear = new Button();
+            btnClear.Dock = DockStyle.Right;
+            btnClear.Width = 112;
+            btnClear.Text = "Xóa so sánh";
+            btnClear.FlatStyle = FlatStyle.Flat;
+            btnClear.FlatAppearance.BorderSize = 0;
+            btnClear.BackColor = ColorTranslator.FromHtml("#991B1B");
+            btnClear.ForeColor = Color.White;
+            btnClear.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+            btnClear.Click += delegate
             {
-                ClearScoreTestData();
-                if (rtbTestLog != null) rtbTestLog.Clear();
-                WriteTestLog("[RESET] Đã xóa bảng kiểm thử Score.");
+                comparisonRows.Clear();
+                currentRunMetrics = null;
+                strategyRunCounter = 0;
+                StartNewComparisonRun();
+                WriteLog("Hệ thống: Đã xóa bảng so sánh cơ chế.");
             };
 
-            header.Controls.Add(btnClearTestLog);
+            Button btnSnapshot = new Button();
+            btnSnapshot.Dock = DockStyle.Right;
+            btnSnapshot.Width = 112;
+            btnSnapshot.Text = "Chốt kết quả";
+            btnSnapshot.FlatStyle = FlatStyle.Flat;
+            btnSnapshot.FlatAppearance.BorderSize = 0;
+            btnSnapshot.BackColor = ColorTranslator.FromHtml("#2563EB");
+            btnSnapshot.ForeColor = Color.White;
+            btnSnapshot.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+            btnSnapshot.Click += delegate
+            {
+                FinalizeCurrentComparisonRun("Đã chốt thủ công");
+                StartNewComparisonRun();
+                WriteLog("Hệ thống: Đã chốt kết quả so sánh cho lượt chạy hiện tại.");
+            };
+
+            header.Controls.Add(btnClear);
+            header.Controls.Add(btnSnapshot);
             header.Controls.Add(title);
 
-            lblScoreSummary = new Label();
-            lblScoreSummary.Dock = DockStyle.Fill;
-            lblScoreSummary.Padding = new Padding(10, 0, 10, 0);
-            lblScoreSummary.TextAlign = ContentAlignment.MiddleLeft;
-            lblScoreSummary.BackColor = ColorTranslator.FromHtml("#E0F2FE");
-            lblScoreSummary.ForeColor = ColorTranslator.FromHtml("#0F172A");
-            lblScoreSummary.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
-            lblScoreSummary.Text = "Chưa có dữ liệu kiểm thử. Thêm đơn rồi bấm Start để hệ thống tính Score.";
+            lblComparisonSummary = new Label();
+            lblComparisonSummary.Dock = DockStyle.Fill;
+            lblComparisonSummary.Padding = new Padding(10, 0, 10, 0);
+            lblComparisonSummary.TextAlign = ContentAlignment.MiddleLeft;
+            lblComparisonSummary.BackColor = ColorTranslator.FromHtml("#ECFDF5");
+            lblComparisonSummary.ForeColor = ColorTranslator.FromHtml("#064E3B");
+            lblComparisonSummary.Font = new Font("Segoe UI", 8.4F, FontStyle.Bold);
+            lblComparisonSummary.Text = "Chọn cơ chế ở panel trái, thêm đơn và chạy mô phỏng. Bấm Chốt kết quả sau mỗi lượt test.";
 
-            tabScoreRobots = new TabControl();
-            tabScoreRobots.Dock = DockStyle.Fill;
-            tabScoreRobots.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+            dgvComparison = new DataGridView();
+            dgvComparison.Dock = DockStyle.Fill;
+            dgvComparison.AutoGenerateColumns = false;
+            dgvComparison.AllowUserToAddRows = false;
+            dgvComparison.AllowUserToDeleteRows = false;
+            dgvComparison.AllowUserToResizeRows = false;
+            dgvComparison.ReadOnly = true;
+            dgvComparison.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvComparison.MultiSelect = false;
+            dgvComparison.RowHeadersVisible = false;
+            dgvComparison.BackgroundColor = Color.White;
+            dgvComparison.BorderStyle = BorderStyle.None;
+            dgvComparison.EnableHeadersVisualStyles = false;
+            dgvComparison.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvComparison.RowTemplate.Height = 34;
+            dgvComparison.Columns.Clear();
 
-            dgvScoreR1 = CreateScoreGrid(false);
-            dgvScoreR3 = CreateScoreGrid(false);
-            dgvScoreR2 = CreateScoreGrid(false);
-            scoreRobotGrids["R1"] = dgvScoreR1;
-            scoreRobotGrids["R3"] = dgvScoreR3;
-            scoreRobotGrids["R2"] = dgvScoreR2;
-            scoreRowsByRobot["R1"] = new List<ScoreCandidateRow>();
-            scoreRowsByRobot["R3"] = new List<ScoreCandidateRow>();
-            scoreRowsByRobot["R2"] = new List<ScoreCandidateRow>();
+            AddComparisonColumn("RunName", "Lượt", 65, 6);
+            AddComparisonColumn("StrategyName", "Cơ chế", 80, 8);
+            AddComparisonColumn("Status", "Trạng thái", 90, 9);
+            AddComparisonColumn("TotalDistance", "Tổng QĐ", 80, 8);
+            AddComparisonColumn("CompletionTime", "TG hoàn thành", 95, 9);
+            AddComparisonColumn("TotalBattery", "Pin tiêu thụ", 90, 9);
+            AddComparisonColumn("WaitReplan", "Chờ / Replan", 90, 9);
+            AddComparisonColumn("RobotsUsed", "Robot dùng", 75, 7);
+            AddComparisonColumn("AvgLoad", "Tải TB", 75, 7);
+            AddComparisonColumn("AvgOrderWait", "Chờ đơn TB", 85, 8);
+            AddComparisonColumn("Orders", "Đơn", 145, 14);
+            AddComparisonColumn("Note", "Ghi chú", 220, 20);
 
-            AddRobotScoreTab("R1 - Robot nhỏ", dgvScoreR1);
-            AddRobotScoreTab("R3 - Robot vừa", dgvScoreR3);
-            AddRobotScoreTab("R2 - Robot tải lớn", dgvScoreR2);
-
-            GroupBox bestBox = new GroupBox();
-            bestBox.Text = "Kết quả tốt nhất theo từng robot và phương án được chọn";
-            bestBox.Dock = DockStyle.Fill;
-            bestBox.Padding = new Padding(8, 24, 8, 8);
-            bestBox.BackColor = ColorTranslator.FromHtml("#F8FAFC");
-            bestBox.ForeColor = ColorTranslator.FromHtml("#111827");
-            bestBox.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
-
-            dgvBestScore = CreateScoreGrid(true);
-            bestBox.Controls.Add(dgvBestScore);
-
-            GroupBox rawBox = new GroupBox();
-            rawBox.Text = "Log thô ngắn gọn";
-            rawBox.Dock = DockStyle.Fill;
-            rawBox.Padding = new Padding(8, 22, 8, 8);
-            rawBox.BackColor = ColorTranslator.FromHtml("#F8FAFC");
-            rawBox.ForeColor = ColorTranslator.FromHtml("#111827");
-            rawBox.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
-
-            rtbTestLog = new RichTextBox();
-            rtbTestLog.Dock = DockStyle.Fill;
-            rtbTestLog.ReadOnly = true;
-            rtbTestLog.BorderStyle = BorderStyle.None;
-            rtbTestLog.BackColor = ColorTranslator.FromHtml("#0B1220");
-            rtbTestLog.ForeColor = ColorTranslator.FromHtml("#E5E7EB");
-            rtbTestLog.Font = new Font("Consolas", 8F);
-            rtbTestLog.WordWrap = false;
-            rtbTestLog.ScrollBars = RichTextBoxScrollBars.Both;
-            rawBox.Controls.Add(rtbTestLog);
+            StyleGrid(dgvComparison);
+            dgvComparison.DefaultCellStyle.Font = new Font("Segoe UI", 8F);
+            dgvComparison.ColumnHeadersDefaultCellStyle.BackColor = ColorTranslator.FromHtml("#059669");
+            dgvComparison.CellFormatting -= ComparisonGrid_CellFormatting;
+            dgvComparison.CellFormatting += ComparisonGrid_CellFormatting;
 
             layout.Controls.Add(header, 0, 0);
-            layout.Controls.Add(lblScoreSummary, 0, 1);
-            layout.Controls.Add(tabScoreRobots, 0, 2);
-            layout.Controls.Add(bestBox, 0, 3);
-            layout.Controls.Add(rawBox, 0, 4);
-            tabPage4.Controls.Add(layout);
+            layout.Controls.Add(lblComparisonSummary, 0, 1);
+            layout.Controls.Add(dgvComparison, 0, 2);
+            tabComparison.Controls.Add(layout);
+            tabControl2.TabPages.Add(tabComparison);
+        }
 
-            StyleTabControl(tabScoreRobots);
-            WriteTestLog("[SYSTEM] Dùng các bảng R1/R3/R2 để kiểm tra Score. Dòng CHỌN ở bảng dưới là phương án tốt nhất hiện tại.");
+        private void AddComparisonColumn(string property, string header, int width, float fillWeight)
+        {
+            DataGridViewTextBoxColumn col = new DataGridViewTextBoxColumn();
+            col.DataPropertyName = property;
+            col.HeaderText = header;
+            col.Width = width;
+            col.FillWeight = fillWeight;
+            dgvComparison.Columns.Add(col);
         }
 
         private void AddRobotScoreTab(string title, DataGridView grid)
@@ -239,36 +541,37 @@ namespace Demo_Robot_Ship
             grid.BackgroundColor = Color.White;
             grid.BorderStyle = BorderStyle.None;
             grid.EnableHeadersVisualStyles = false;
-            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             grid.ScrollBars = ScrollBars.Both;
-            grid.RowTemplate.Height = 26;
+            grid.RowTemplate.Height = bestGrid ? 32 : 30;
             grid.Columns.Clear();
 
-            AddScoreGridColumn(grid, "Tick", "Tick", 48);
-            AddScoreGridColumn(grid, "Decision", bestGrid ? "Kết luận" : "Loại", 96);
+            AddScoreGridColumn(grid, "Tick", "Tick", 44);
+            AddScoreGridColumn(grid, "Strategy", "Cơ chế", 70);
+            AddScoreGridColumn(grid, "Decision", bestGrid ? "Kết luận" : "Trạng thái", 95);
             AddScoreGridColumn(grid, "Robot", "Robot", 55);
-            AddScoreGridColumn(grid, "FinalScoreText", "Score", 70);
-            AddScoreGridColumn(grid, "Orders", "Đơn", 150);
-            AddScoreGridColumn(grid, "Route", "Tuyến", 170);
-            AddScoreGridColumn(grid, "Load", "Tải", 95);
-            AddScoreGridColumn(grid, "Steps", "Bước/Thời gian", 120);
+            AddScoreGridColumn(grid, "FinalScoreText", "Score", 65);
+            AddScoreGridColumn(grid, "Orders", "Nhóm đơn", 160);
+            AddScoreGridColumn(grid, "Route", "Tuyến giao", 160);
+            AddScoreGridColumn(grid, "Load", "Tải trọng", 95);
+            AddScoreGridColumn(grid, "Steps", "Move/Wait/Time", 130);
             AddScoreGridColumn(grid, "Battery", "Pin", 155);
-            AddScoreGridColumn(grid, "Health", "Pin khỏe", 100);
-            AddScoreGridColumn(grid, "Delay", "Delay", 70);
-            AddScoreGridColumn(grid, "LoadScore", "Load", 60, "0.00");
-            AddScoreGridColumn(grid, "DistanceScore", "Dist", 60, "0.00");
-            AddScoreGridColumn(grid, "TimeScore", "Time", 60, "0.00");
-            AddScoreGridColumn(grid, "BatteryScore", "Battery", 70, "0.00");
-            AddScoreGridColumn(grid, "HealthScore", "Health", 70, "0.00");
-            AddScoreGridColumn(grid, "WaitScore", "Wait", 60, "0.00");
-            AddScoreGridColumn(grid, "DelayPenalty", "Delay-", 65, "0.00");
+            AddScoreGridColumn(grid, "Health", "SoH", 75);
+            AddScoreGridColumn(grid, "LoadScore", "Load", 58, "0.00");
+            AddScoreGridColumn(grid, "DistanceScore", "Dist", 58, "0.00");
+            AddScoreGridColumn(grid, "TimeScore", "Time", 58, "0.00");
+            AddScoreGridColumn(grid, "BatteryScore", "Bat", 58, "0.00");
+            AddScoreGridColumn(grid, "HealthScore", "Health", 62, "0.00");
+            AddScoreGridColumn(grid, "WaitScore", "Wait", 58, "0.00");
+            AddScoreGridColumn(grid, "DelayPenalty", "Delay-", 62, "0.00");
             AddScoreGridColumn(grid, "Reason", "Lý do", 180);
 
             StyleGrid(grid);
-            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
+            grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             grid.ColumnHeadersDefaultCellStyle.BackColor = bestGrid ? ColorTranslator.FromHtml("#16A34A") : ColorTranslator.FromHtml("#2563EB");
             grid.DefaultCellStyle.Font = new Font("Segoe UI", 8F);
             grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+            if (grid.Columns.Count > 4) grid.Columns[4].DefaultCellStyle.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
             grid.CellFormatting -= ScoreGrid_CellFormatting;
             grid.CellFormatting += ScoreGrid_CellFormatting;
             return grid;
@@ -278,26 +581,25 @@ namespace Demo_Robot_Ship
         {
             DataGridView grid = sender as DataGridView;
             if (grid == null || e.RowIndex < 0) return;
-            if (grid.Columns[e.ColumnIndex].DataPropertyName != "Decision") return;
+            ScoreCandidateRow row = grid.Rows[e.RowIndex].DataBoundItem as ScoreCandidateRow;
+            if (row == null) return;
 
-            string value = e.Value == null ? "" : e.Value.ToString();
+            string value = row.Decision == null ? "" : row.Decision;
             if (value.Contains("CHỌN"))
             {
-                e.CellStyle.BackColor = ColorTranslator.FromHtml("#DCFCE7");
-                e.CellStyle.ForeColor = ColorTranslator.FromHtml("#166534");
-                e.CellStyle.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = ColorTranslator.FromHtml("#DCFCE7");
+                grid.Rows[e.RowIndex].DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#14532D");
+                grid.Rows[e.RowIndex].DefaultCellStyle.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
             }
             else if (value.Contains("TẠM CHỜ") || value.Contains("CHỜ"))
             {
-                e.CellStyle.BackColor = ColorTranslator.FromHtml("#FEF3C7");
-                e.CellStyle.ForeColor = ColorTranslator.FromHtml("#92400E");
-                e.CellStyle.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = ColorTranslator.FromHtml("#FEF3C7");
+                grid.Rows[e.RowIndex].DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#92400E");
             }
             else if (value.Contains("BEST") || value.Contains("TỐT"))
             {
-                e.CellStyle.BackColor = ColorTranslator.FromHtml("#DBEAFE");
-                e.CellStyle.ForeColor = ColorTranslator.FromHtml("#1D4ED8");
-                e.CellStyle.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                grid.Rows[e.RowIndex].DefaultCellStyle.BackColor = ColorTranslator.FromHtml("#DBEAFE");
+                grid.Rows[e.RowIndex].DefaultCellStyle.ForeColor = ColorTranslator.FromHtml("#1D4ED8");
             }
         }
 
@@ -489,6 +791,11 @@ namespace Demo_Robot_Ship
             StyleButton(btnStart, CSuccess, CSuccessHover, Color.White);
             StyleButton(btnPause, CWarning, CWarningHover, Color.White);
             StyleButton(btnReset, CGrayButton, CGrayButtonHover, Color.White);
+            if (cboDispatchStrategy != null)
+            {
+                cboDispatchStrategy.BackColor = Color.White;
+                cboDispatchStrategy.ForeColor = CText;
+            }
 
             trackBar1.BackColor = CSidebar;
             SetSidebarLabels(groupBox1);

@@ -4,6 +4,7 @@ namespace Demo_Robot_Ship
     {
         public string CandidateKey { get; set; }
         public int Tick { get; set; }
+        public string Strategy { get; set; }
         public string Robot { get; set; }
         public string Decision { get; set; }
         public string Reason { get; set; }

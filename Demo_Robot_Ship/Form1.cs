@@ -46,6 +46,18 @@ namespace Demo_Robot_Ship
         private DataGridView dgvScoreR2;
         private DataGridView dgvScoreR3;
         private DataGridView dgvBestScore;
+        private Dictionary<string, DataGridView> scoreDetailGrids = new Dictionary<string, DataGridView>();
+        private Dictionary<string, GroupBox> scoreRobotBoxes = new Dictionary<string, GroupBox>();
+        private GroupBox bestScoreBox;
+        private ComboBox cboDispatchStrategy;
+        private Label lblDispatchStrategyInfo;
+        private TabPage tabComparison;
+        private DataGridView dgvComparison;
+        private Label lblComparisonSummary;
+        private DispatchStrategy currentDispatchStrategy = DispatchStrategy.Greedy;
+        private StrategyRunMetrics currentRunMetrics;
+        private List<StrategyComparisonRow> comparisonRows = new List<StrategyComparisonRow>();
+        private int strategyRunCounter = 0;
         private Dictionary<string, DataGridView> scoreRobotGrids = new Dictionary<string, DataGridView>();
         private Dictionary<string, List<ScoreCandidateRow>> scoreRowsByRobot = new Dictionary<string, List<ScoreCandidateRow>>();
         private List<ScoreCandidateRow> scoreAllRows = new List<ScoreCandidateRow>();
@@ -82,6 +94,7 @@ namespace Demo_Robot_Ship
         private const int MaxBatchWaitTicks = 15;
         private const double LoadDispatchThreshold = 0.70;
         private const int MaxOrdersPerTrip = 5;
+        private const int MaxCvrpOrdersPerOptimization = 8;
 
         // Mô hình pin: CurrentBattery là pin hiện tại, BatteryHealth là sức khỏe pin.
         private const double BatteryReservePercent = 15.0;

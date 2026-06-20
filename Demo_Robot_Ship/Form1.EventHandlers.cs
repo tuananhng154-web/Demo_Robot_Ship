@@ -13,8 +13,9 @@ namespace Demo_Robot_Ship
     {
         private void btnStart_Click(object sender, EventArgs e)
         {
+            EnsureComparisonRun();
             timerSimulation.Start();
-            WriteLog("Hệ thống: Đã bắt đầu mô phỏng.");
+            WriteLog("Hệ thống: Đã bắt đầu mô phỏng với cơ chế " + GetStrategyName(currentDispatchStrategy) + ".");
         }
 
         private void btnPause_Click(object sender, EventArgs e)
@@ -26,6 +27,7 @@ namespace Demo_Robot_Ship
         private void btnReset_Click(object sender, EventArgs e)
         {
             timerSimulation.Stop();
+            FinalizeCurrentComparisonRun("Đã chốt trước khi reset");
             pendingOrders.Clear();
             allOrders.Clear();
             orderCounter = 0;
@@ -39,6 +41,7 @@ namespace Demo_Robot_Ship
                 rtbTestLog.Clear();
                 WriteTestLog("[RESET] Đã xóa bảng kiểm thử và khởi tạo lại dữ liệu test.");
             }
+            StartNewComparisonRun();
             WriteLog("Hệ thống: Đã làm mới bản đồ, danh sách đơn và đội robot.");
             RefreshUi();
             picMap.Invalidate();
